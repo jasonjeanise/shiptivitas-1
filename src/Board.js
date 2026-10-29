@@ -7,18 +7,84 @@ import './Board.css';
 export default class Board extends React.Component {
   constructor(props) {
     super(props);
+
     const clients = this.getClients();
+
     this.state = {
       clients: {
         backlog: clients.filter(client => !client.status || client.status === 'backlog'),
         inProgress: clients.filter(client => client.status && client.status === 'in-progress'),
         complete: clients.filter(client => client.status && client.status === 'complete'),
-      }
-    }
+      },
+    };
+
     this.swimlanes = {
       backlog: React.createRef(),
       inProgress: React.createRef(),
       complete: React.createRef(),
+    };
+  }
+
+  componentDidMount() {
+    const lanes = [
+      {
+        key: 'backlog',
+        status: 'backlog',
+        container: this.swimlanes.backlog.current,
+      },
+      {
+        key: 'inProgress',
+        status: 'in-progress',
+        container: this.swimlanes.inProgress.current,
+      },
+      {
+        key: 'complete',
+        status: 'complete',
+        container: this.swimlanes.complete.current,
+      },
+    ];
+
+    this.drake = Dragula(
+      lanes.map(lane => lane.container),
+      { revertOnSpill: true }
+    );
+
+    this.drake.on('drag', (element) => {
+      this.originalNextSibling = element.nextSibling;
+    });
+
+    this.drake.on('drop', (element, target, source) => {
+      const clientsById = {};
+
+      Object.keys(this.state.clients).forEach(key => {
+        this.state.clients[key].forEach(client => {
+          clientsById[String(client.id)] = client;
+        });
+      });
+
+      const updatedClients = {};
+
+      lanes.forEach(lane => {
+        updatedClients[lane.key] = Array.from(
+          lane.container.children
+        ).map(card => ({
+          ...clientsById[card.getAttribute('data-id')],
+          status: lane.status,
+        }));
+      });
+
+      // Restore the original DOM position before React updates it.
+      source.insertBefore(element, this.originalNextSibling);
+
+      this.setState({
+        clients: updatedClients,
+      });
+    });
+  }
+
+  componentWillUnmount() {
+    if (this.drake) {
+      this.drake.destroy();
     }
   }
   getClients() {
@@ -47,7 +113,7 @@ export default class Board extends React.Component {
       id: companyDetails[0],
       name: companyDetails[1],
       description: companyDetails[2],
-      status: companyDetails[3],
+      status: 'backlog',
     }));
   }
   renderSwimlane(name, clients, ref) {
